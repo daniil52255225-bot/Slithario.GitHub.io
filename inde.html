@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slither.io Clone</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+        }
+        
+        #gameCanvas {
+            background-color: #111;
+            border: 2px solid #444;
+            cursor: none;
+        }
+        
+        #uiOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            text-align: center;
+        }
+        
+        #gameOverScreen {
+            display: none;
+        }
+        
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            color: #4CAF50;
+        }
+        
+        p {
+            font-size: 18px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <div id="uiOverlay">
+            <div id="score">Длина: 10</div>
+            
+            <div id="startScreen">
+                <h1>Slither.io Clone</h1>
+                <p>Управляйте змейкой с помощью мыши</p>
+                <p>Собирайте еду, чтобы расти</p>
+                <p>Избегайте столкновений с другими змейками</p>
+                <button id="startButton">Начать игру</button>
+            </div>
+            
+            <div id="gameOverScreen">
+                <h1>Игра окончена!</h1>
+                <p id="finalScore">Ваша длина: 0</p>
+                <button id="restartButton">Играть снова</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Получаем элементы
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreElement = document.getElementById('finalScore');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        
+        // Игровые переменные
+        let gameRunning = false;
+        let player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            segments: [],
+            length: 10,
+            speed: 3,
+            color: `hsl(${Math.random() * 360}, 100%, 50%)`
+        };
+        
+        let foods = [];
+        let enemies = [];
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        
+        // Инициализация игрока
+        function initPlayer() {
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            player.segments = [];
+            player.length = 10;
+            player.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+            
+            // Создаем начальные сегменты
+            for (let i = 0; i < player.length; i++) {
+                player.segments.push({x: player.x, y: player.y});
+            }
+        }
+        
+        // Создание еды
+        function createFood() {
+            foods.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: 5,
+                color: `hsl(${Math.random() * 360}, 100%, 50%)`
+            });
+        }
+        
+        // Создание врагов
+        function createEnemy() {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const length = Math.floor(Math.random() * 20) + 5;
+            const segments = [];
+            
+            for (let i = 0; i < length; i++) {
+                segments.push({x: x, y: y});
+            }
+            
+            enemies.push({
+                x: x,
+                y: y,
+                segments: segments,
+                length: length,
+                speed: 1 + Math.random() * 2,
+                color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                targetX: Math.random() * canvas.width,
+                targetY: Math.random() * canvas.height
+            });
+        }
+        
+        // Обновление позиции игрока
+        function updatePlayer() {
+            // Вычисляем направление к курсору
+            const dx = mouseX - player.x;
+            const dy = mouseY - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Нормализуем и умножаем на скорость
+            if (distance > 0) {
+                player.x += (dx / distance) * player.speed;
+                player.y += (dy / distance) * player.speed;
+            }
+            
+            // Добавляем новую позицию в начало массива сегментов
+            player.segments.unshift({x: player.x, y: player.y});
+            
+            // Удаляем лишние сегменты, если длина превышена
+            if (player.segments.length > player.length) {
+                player.segments.pop();
+            }
+        }
+        
+        // Обновление врагов
+        function updateEnemies() {
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                
+                // Периодически меняем цель
+                if (Math.random() < 0.01) {
+                    enemy.targetX = Math.random() * canvas.width;
+                    enemy.targetY = Math.random() * canvas.height;
+                }
+                
+                // Движение к цели
+                const dx = enemy.targetX - enemy.x;
+                const dy = enemy.targetY - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    enemy.x += (dx / distance) * enemy.speed;
+                    enemy.y += (dy / distance) * enemy.speed;
+                }
+                
+                // Обновление сегментов
+                enemy.segments.unshift({x: enemy.x, y: enemy.y});
+                
+                if (enemy.segments.length > enemy.length) {
+                    enemy.segments.pop();
+                }
+            }
+        }
+        
+        // Проверка столкновений
+        function checkCollisions() {
+            // Проверка столкновений с врагами
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                
+                // Проверяем столкновение головы игрока с телом врага
+                for (let j = 1; j < enemy.segments.length; j++) {
+                    const segment = enemy.segments[j];
+                    const dx = player.x - segment.x;
+                    const dy = player.y - segment.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 10) {
+                        gameOver();
+                        return;
+                    }
+                }
+                
+                // Проверяем столкновение головы врага с телом игрока
+                for (let j = 1; j < player.segments.length; j++) {
+                    const segment = player.segments[j];
+                    const dx = enemy.x - segment.x;
+                    const dy = enemy.y - segment.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 10) {
+                        // Уменьшаем врага
+                        enemy.length = Math.max(5, enemy.length - 5);
+                        if (enemy.segments.length > enemy.length) {
+                            enemy.segments.splice(enemy.length);
+                        }
+                    }
+                }
+            }
+            
+            // Проверка столкновений с едой
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
+                const dx = player.x - food.x;
+                const dy = player.y - food.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 15) {
+                    // Увеличиваем длину игрока
+                    player.length += 2;
+                    scoreElement.textContent = `Длина: ${player.length}`;
+                    
+                    // Удаляем съеденную еду
+                    foods.splice(i, 1);
+                    
+                    // Создаем новую еду
+                    createFood();
+                }
+            }
+        }
+        
+        // Отрисовка игрока
+        function drawPlayer() {
+            // Рисуем сегменты
+            for (let i = 0; i < player.segments.length; i++) {
+                const segment = player.segments[i];
+                const radius = 10 - (i / player.segments.length) * 5;
+                
+                ctx.beginPath();
+                ctx.arc(segment.x, segment.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = player.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+            
+            // Рисуем глаза
+            const dx = mouseX - player.x;
+            const dy = mouseY - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const eyeOffsetX = (dx / distance) * 5;
+            const eyeOffsetY = (dy / distance) * 5;
+            
+            ctx.beginPath();
+            ctx.arc(player.x + eyeOffsetX, player.y + eyeOffsetY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.closePath();
+        }
+        
+        // Отрисовка еды
+        function drawFood() {
+            for (let i = 0; i < foods.length; i++) {
+                const food = foods[i];
+                
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
+                ctx.fillStyle = food.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+        
+        // Отрисовка врагов
+        function drawEnemies() {
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                
+                // Рисуем сегменты
+                for (let j = 0; j < enemy.segments.length; j++) {
+                    const segment = enemy.segments[j];
+                    const radius = 10 - (j / enemy.segments.length) * 5;
+                    
+                    ctx.beginPath();
+                    ctx.arc(segment.x, segment.y, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = enemy.color;
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            }
+        }
+        
+        // Игровой цикл
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            // Очистка canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Обновление игрока
+            updatePlayer();
+            
+            // Обновление врагов
+            updateEnemies();
+            
+            // Проверка столкновений
+            checkCollisions();
+            
+            // Отрисовка
+            drawFood();
+            drawEnemies();
+            drawPlayer();
+            
+            // Продолжаем игровой цикл
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Начало игры
+        function startGame() {
+            gameRunning = true;
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            
+            // Инициализация игрока
+            initPlayer();
+            
+            // Создание начальной еды
+            foods = [];
+            for (let i = 0; i < 50; i++) {
+                createFood();
+            }
+            
+            // Создание врагов
+            enemies = [];
+            for (let i = 0; i < 10; i++) {
+                createEnemy();
+            }
+            
+            // Запуск игрового цикла
+            gameLoop();
+        }
+        
+        // Конец игры
+        function gameOver() {
+            gameRunning = false;
+            finalScoreElement.textContent = `Ваша длина: ${player.length}`;
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        // Обработчики событий
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+        
+        // Инициализация начального экрана
+        startScreen.style.display = 'flex';
+    </script>
+</body>
+</html>
